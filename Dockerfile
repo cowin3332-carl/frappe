@@ -1,35 +1,23 @@
-# 第一阶段：构建器 (基于稳定的 v16 环境)
-FROM frappe/erpnext:v16 AS builder
-
-# 切换到 root 安装必要的构建工具（git, nodejs 等官方镜像已带，但保险起见更新下）
-USER root
-RUN apt-get update && apt-get install -y git && apt-get clean
-
-USER frappe
-WORKDIR /home/frappe/frappe-bench
-
-# ⚠️ 修正：直接在现有的 bench 环境下获取 App
-# ERPNext 分支是 version-16，CRM 是 main
-RUN bench get-app erpnext --branch version-16 && \
-    bench get-app crm --branch main
-
-# 编译资源 (v16 必须步骤，否则界面会乱码或报错)
-RUN bench build --app erpnext,crm
-
-# 第二阶段：生产镜像
+# 直接使用官方生产镜像作为基础，它已经内置了 ERPNext v16
 FROM frappe/erpnext:v16
 
 USER root
-# 加上你最需要的中文字体
-RUN apt-get update && \
-    apt-get install -y fonts-wqy-microhei fontconfig && \
-    fc-cache -fv && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# 拷贝构建好的结果
-# 官方路径通常是 /home/frappe/frappe-bench/
-COPY --from=builder /home/frappe/frappe-bench/apps /home/frappe/frappe-bench/apps
-COPY --from=builder /home/frappe/frappe-bench/sites /home/frappe/frappe-bench/sites
+# 1. 安装构建 CRM 所需的编译工具和中文字体
+RUN apt-get update && apt-get install -y \
+    git \
+    fonts-wqy-microhei \
+    fontconfig \
+    && fc-cache -fv \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 USER frappe
 WORKDIR /home/frappe/frappe-bench
+
+# 2. 只安装缺少的 App (CRM)
+# 加上 --skip-assets 避开最耗内存的编译阶段，我们在后面统一处理
+RUN bench get-app crm --branch main --skip-assets
+
+# 3. 统一编译前端资源 (增加内存限制防止 GitHub Actions 崩溃)
+# 使用 NODE_OPTIONS 限制内存占用
+RUN export NODE_OPTIONS="--max-old-space-size=4096" && \
+    bench build --app crm
