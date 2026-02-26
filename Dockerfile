@@ -11,7 +11,7 @@ WORKDIR /home/frappe/frappe-bench
 # 1. 这里的 ERPNext 已经预装好了，我们只拉取 CRM
 # 加上 --skip-assets 是为了在下一步统一编译
 RUN bench get-app crm --branch main --skip-assets
-
+RUN echo '{"socketio_port": 11000}' > sites/common_site_config.json
 # 2. 编译前端资源
 # 生产镜像可能缺少 yarn/node，如果报错，我们需要确保环境变量正确
 RUN bench build --app crm
